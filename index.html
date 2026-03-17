@@ -481,7 +481,7 @@
     </div>
 
     <script>
-      const DEFAULT_SIGNAL_PATH = '/signal/';
+      const DEFAULT_SIGNAL_BASE_URL = 'https://localcamera-cloud-signal.affliction134.workers.dev/';
       const SIGNAL_PATH_SEGMENT = 'peerjs';
       const SIGNAL_QUERY_PARAMETER = 's';
       const SIGNAL_PROTOCOL_VERSION = '1.5.5';
@@ -585,7 +585,7 @@
           }
         }
 
-        return new URL(DEFAULT_SIGNAL_PATH, window.location.origin).toString();
+        return DEFAULT_SIGNAL_BASE_URL;
       }
 
       function isPathStreamId(value) {
