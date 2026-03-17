@@ -1,0 +1,1130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LocalCamera Cloud Viewer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #030405;
+        --text: #f4f7fb;
+        --muted: #b1b5bf;
+        --accent: #4f8fff;
+        --danger: #d85f67;
+        --mist: #181b20;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 24% 10%, rgba(79, 143, 255, 0.06), transparent 24%),
+          linear-gradient(180deg, #090b0f 0%, #030405 100%);
+        color: var(--text);
+        font-family: 'Manrope', 'Segoe UI', sans-serif;
+      }
+
+      body::before,
+      body::after {
+        content: '';
+        position: fixed;
+        pointer-events: none;
+      }
+
+      body::before {
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 180px;
+        background: linear-gradient(180deg, rgba(0, 0, 0, 0.46), transparent);
+      }
+
+      body::after {
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 180px;
+        background: linear-gradient(0deg, rgba(0, 0, 0, 0.62), transparent);
+      }
+
+      .shell {
+        width: 100%;
+        height: 100%;
+        padding: 18px;
+      }
+
+      .frame {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .viewer {
+        position: relative;
+        width: min(100%, 1180px);
+        height: min(100%, 82vh);
+        min-height: 340px;
+        border-radius: 24px;
+        background: #000;
+        overflow: hidden;
+        user-select: none;
+        touch-action: manipulation;
+      }
+
+      .viewer::before {
+        content: '';
+        position: absolute;
+        inset: 0 0 auto 0;
+        height: 170px;
+        background: linear-gradient(180deg, rgba(0, 0, 0, 0.58), transparent);
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      .viewer::after {
+        content: '';
+        position: absolute;
+        inset: auto 0 0 0;
+        height: 180px;
+        background: linear-gradient(0deg, rgba(0, 0, 0, 0.62), transparent);
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      video {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: contain;
+        background: #000;
+      }
+
+      .status-pill {
+        position: absolute;
+        top: 18px;
+        left: 20px;
+        z-index: 4;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        opacity: 0.86;
+        pointer-events: none;
+        transition: opacity 180ms ease, color 180ms ease;
+      }
+
+      .status-pill.live {
+        color: var(--accent);
+      }
+
+      .status-pill.connecting {
+        color: var(--accent);
+      }
+
+      .status-pill.error {
+        color: var(--danger);
+      }
+
+      .status-pill.idle-hidden {
+        opacity: 0;
+      }
+
+      .overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: linear-gradient(180deg, rgba(4, 5, 7, 0.52), rgba(4, 5, 7, 0.32));
+        transition: opacity 180ms ease;
+      }
+
+      .overlay.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .overlay-copy {
+        width: min(380px, 100%);
+        text-align: center;
+      }
+
+      .overlay-title {
+        margin: 0;
+        font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+        font-size: clamp(22px, 4vw, 30px);
+        font-weight: 700;
+        letter-spacing: -0.03em;
+      }
+
+      .overlay-text {
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .controls-layer {
+        position: absolute;
+        left: 18px;
+        right: 18px;
+        bottom: 18px;
+        z-index: 5;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 18px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 180ms ease;
+      }
+
+      .controls-layer.visible {
+        opacity: 1;
+      }
+
+      .controls-left,
+      .controls-center,
+      .controls-right {
+        pointer-events: auto;
+      }
+
+      .controls-left {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .controls-center {
+        position: absolute;
+        left: 50%;
+        bottom: 0;
+        transform: translateX(-50%);
+      }
+
+      .controls-right {
+        display: inline-flex;
+        align-items: flex-end;
+        gap: 18px;
+      }
+
+      .menu-anchor {
+        position: relative;
+      }
+
+      button {
+        appearance: none;
+        border: none;
+        background: transparent;
+        padding: 0;
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+        transition: opacity 120ms ease, color 120ms ease;
+      }
+
+      button:hover {
+        opacity: 0.9;
+      }
+
+      button:focus-visible,
+      input:focus-visible {
+        outline: none;
+      }
+
+      .icon-button {
+        width: 28px;
+        height: 28px;
+        display: inline-grid;
+        place-items: center;
+        color: rgba(244, 247, 251, 0.94);
+      }
+
+      .icon-button svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+        fill: currentColor;
+      }
+
+      .icon-button:hover,
+      .icon-button.active {
+        color: var(--accent);
+      }
+
+      .play-button {
+        width: 34px;
+        height: 34px;
+      }
+
+      .volume-slider {
+        --fill: 100%;
+        width: clamp(84px, 14vw, 140px);
+        margin: 0;
+        appearance: none;
+        -webkit-appearance: none;
+        height: 2px;
+        border-radius: 999px;
+        background: linear-gradient(
+          90deg,
+          var(--accent) 0%,
+          var(--accent) var(--fill),
+          rgba(255, 255, 255, 0.24) var(--fill),
+          rgba(255, 255, 255, 0.24) 100%
+        );
+        cursor: pointer;
+      }
+
+      .volume-slider::-webkit-slider-runnable-track {
+        height: 2px;
+        background: transparent;
+      }
+
+      .volume-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 12px;
+        height: 12px;
+        margin-top: -5px;
+        border: none;
+        border-radius: 50%;
+        background: var(--text);
+      }
+
+      .volume-slider::-moz-range-track {
+        height: 2px;
+        border: none;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.24);
+      }
+
+      .volume-slider::-moz-range-progress {
+        height: 2px;
+        border-radius: 999px;
+        background: var(--accent);
+      }
+
+      .volume-slider::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        border: none;
+        border-radius: 50%;
+        background: var(--text);
+      }
+
+      .menu-button {
+        color: rgba(244, 247, 251, 0.94);
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1;
+      }
+
+      .menu-button.open,
+      .menu-button.active {
+        color: var(--accent);
+      }
+
+      .popup-menu {
+        position: absolute;
+        right: 0;
+        bottom: calc(100% + 12px);
+        display: none;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 10px;
+        min-width: max-content;
+      }
+
+      .popup-menu.open {
+        display: flex;
+      }
+
+      .menu-option {
+        color: rgba(177, 181, 191, 0.94);
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .menu-option:hover {
+        color: var(--text);
+      }
+
+      .menu-option.active {
+        color: var(--accent);
+      }
+
+      @media (max-width: 840px) {
+        .shell {
+          padding: 12px;
+        }
+
+        .viewer {
+          border-radius: 22px;
+          height: min(100%, 88vh);
+        }
+
+        .status-pill {
+          top: 14px;
+          left: 14px;
+        }
+
+        .controls-layer {
+          left: 14px;
+          right: 14px;
+          bottom: 14px;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .viewer {
+          border-radius: 18px;
+        }
+
+        .controls-layer {
+          gap: 12px;
+        }
+
+        .controls-right {
+          gap: 14px;
+        }
+
+        .menu-button,
+        .menu-option {
+          font-size: 13px;
+        }
+
+        .volume-slider {
+          width: 88px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="frame">
+        <section id="viewer" class="viewer">
+          <video id="video" autoplay playsinline></video>
+
+          <div id="statusPill" class="status-pill connecting">Waiting</div>
+
+          <div id="overlay" class="overlay">
+            <div class="overlay-copy">
+              <h1 id="overlayTitle" class="overlay-title">Waiting for stream</h1>
+              <p id="overlayText" class="overlay-text">
+                Open the exact link shared by the app.
+              </p>
+            </div>
+          </div>
+
+          <div id="controlsLayer" class="controls-layer">
+            <div class="controls-left">
+              <button id="muteButton" class="icon-button" type="button" aria-label="Mute">
+                <svg id="muteIcon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14 5.23v13.54c0 .45-.54.67-.85.35L8.57 15H5c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3.57l4.58-4.12c.31-.32.85-.1.85.35z"></path>
+                  <path d="M16.5 8.5a.75.75 0 0 1 1.06 0A4.97 4.97 0 0 1 19 12c0 1.38-.56 2.63-1.46 3.54a.75.75 0 1 1-1.06-1.06A3.47 3.47 0 0 0 18 12c0-.97-.39-1.85-1.02-2.48a.75.75 0 0 1 0-1.06z"></path>
+                </svg>
+              </button>
+              <input
+                id="volumeSlider"
+                class="volume-slider"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value="100"
+                aria-label="Volume"
+              />
+            </div>
+
+            <div class="controls-center">
+              <button id="pauseButton" class="icon-button play-button" type="button" aria-label="Pause">
+                <svg id="pauseIcon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M8 6h3v12H8zm5 0h3v12h-3z"></path>
+                </svg>
+              </button>
+            </div>
+
+            <div class="controls-right">
+              <div class="menu-anchor">
+                <button id="qualityButton" class="menu-button" type="button">720p</button>
+                <div id="qualityMenu" class="popup-menu"></div>
+              </div>
+              <div class="menu-anchor">
+                <button id="bitrateButton" class="menu-button" type="button">3000 kbps</button>
+                <div id="bitrateMenu" class="popup-menu"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      const PEER_HOST = '0.peerjs.com';
+      const PEER_PORT = 443;
+      const PEER_PATH = '/';
+      const PEER_KEY = 'peerjs';
+      const PEER_VERSION = '1.5.5';
+      const RTC_CONFIG = {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          {
+            urls: [
+              'turn:eu-0.turn.peerjs.com:3478',
+              'turn:us-0.turn.peerjs.com:3478',
+            ],
+            username: 'peerjs',
+            credential: 'peerjsp',
+          },
+        ],
+        sdpSemantics: 'unified-plan',
+      };
+
+      const QUALITY_OPTIONS = [
+        { label: 'Source', value: 0 },
+        { label: '1080p', value: 1080 },
+        { label: '720p', value: 720 },
+        { label: '540p', value: 540 },
+        { label: '360p', value: 360 },
+      ];
+
+      const BITRATE_OPTIONS = Array.from({ length: 10 }, (_, index) => {
+        const value = (index + 1) * 1000;
+        return { label: `${value} kbps`, value };
+      }).reverse();
+
+      const viewer = document.getElementById('viewer');
+      const statusPill = document.getElementById('statusPill');
+      const overlay = document.getElementById('overlay');
+      const overlayTitle = document.getElementById('overlayTitle');
+      const overlayText = document.getElementById('overlayText');
+      const videoNode = document.getElementById('video');
+      const controlsLayer = document.getElementById('controlsLayer');
+      const pauseButton = document.getElementById('pauseButton');
+      const muteButton = document.getElementById('muteButton');
+      const pauseIcon = document.getElementById('pauseIcon');
+      const muteIcon = document.getElementById('muteIcon');
+      const volumeSlider = document.getElementById('volumeSlider');
+      const qualityButton = document.getElementById('qualityButton');
+      const bitrateButton = document.getElementById('bitrateButton');
+      const qualityMenu = document.getElementById('qualityMenu');
+      const bitrateMenu = document.getElementById('bitrateMenu');
+
+      const streamId = resolveStreamId();
+
+      let socket = null;
+      let peer = null;
+      let heartbeatTimer = null;
+      let reconnectTimer = null;
+      let controlsHideTimer = null;
+      let viewerId = `viewer_${randomId(5)}`;
+      let viewerToken = randomId(12);
+      let connectionId = null;
+      let manualPause = false;
+      let manualMute = false;
+      let socketOpenedByServer = false;
+      let isLiveStream = false;
+      let qualityIndex = 2;
+      let bitrateIndex = 7;
+      let currentVolume = 1;
+      let rememberedVolume = 1;
+
+      function resolveStreamId() {
+        const params = new URLSearchParams(window.location.search);
+        const queryId = params.get('id');
+        if (queryId && queryId.trim()) {
+          return queryId.trim();
+        }
+
+        const hashId = window.location.hash.replace(/^#/, '').trim();
+        if (hashId) {
+          return hashId;
+        }
+
+        const cleanPath = window.location.pathname.replace(/\/+$/, '');
+        const parts = cleanPath.split('/').filter(Boolean);
+        if (parts.length > 0) {
+          const tail = decodeURIComponent(parts[parts.length - 1]);
+          if (tail && tail.toLowerCase() !== 'index.html') {
+            return tail;
+          }
+        }
+
+        return '';
+      }
+
+      function randomId(length) {
+        const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+        let result = '';
+        for (let index = 0; index < length; index += 1) {
+          result += alphabet[Math.floor(Math.random() * alphabet.length)];
+        }
+        return result;
+      }
+
+      function normalizePath(path) {
+        if (!path || path === '/') {
+          return '/';
+        }
+        return `${path.startsWith('/') ? path : `/${path}`}${path.endsWith('/') ? '' : '/'}`;
+      }
+
+      function isMutedState() {
+        return manualMute || currentVolume <= 0.001;
+      }
+
+      function isAnyMenuOpen() {
+        return qualityMenu.classList.contains('open') || bitrateMenu.classList.contains('open');
+      }
+
+      function setStatus(text, tone) {
+        statusPill.textContent = text;
+        statusPill.className = `status-pill ${tone || 'connecting'}`.trim();
+        statusPill.classList.toggle('idle-hidden', isLiveStream && !controlsLayer.classList.contains('visible'));
+      }
+
+      function setOverlay(title, text, hidden = false) {
+        overlayTitle.textContent = title;
+        overlayText.textContent = text;
+        overlay.classList.toggle('hidden', hidden);
+      }
+
+      function updateVolumeSliderFill() {
+        volumeSlider.style.setProperty('--fill', `${Number(volumeSlider.value)}%`);
+      }
+
+      function setControlsVisible(visible) {
+        controlsLayer.classList.toggle('visible', visible);
+        statusPill.classList.toggle('idle-hidden', isLiveStream && !visible);
+      }
+
+      function clearControlsHideTimer() {
+        if (controlsHideTimer) {
+          clearTimeout(controlsHideTimer);
+          controlsHideTimer = null;
+        }
+      }
+
+      function scheduleControlsHide() {
+        clearControlsHideTimer();
+        if (!isLiveStream) {
+          return;
+        }
+        controlsHideTimer = setTimeout(() => {
+          if (isAnyMenuOpen()) {
+            scheduleControlsHide();
+            return;
+          }
+          setControlsVisible(false);
+        }, 2000);
+      }
+
+      function revealControls() {
+        if (!isLiveStream) {
+          return;
+        }
+        setControlsVisible(true);
+        scheduleControlsHide();
+      }
+
+      function holdControls() {
+        setControlsVisible(true);
+        clearControlsHideTimer();
+      }
+
+      function applyVolumeState() {
+        videoNode.volume = currentVolume;
+        videoNode.muted = isMutedState();
+        updateVolumeSliderFill();
+        refreshButtons();
+      }
+
+      function refreshButtons() {
+        const muted = isMutedState();
+        pauseButton.classList.toggle('active', manualPause);
+        muteButton.classList.toggle('active', muted);
+        pauseButton.setAttribute('aria-label', manualPause ? 'Play' : 'Pause');
+        muteButton.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
+        pauseIcon.innerHTML = manualPause
+          ? '<path d="M8 5.14v13.72c0 .5.54.82.98.58l10.09-6.86a.66.66 0 0 0 0-1.16L8.98 4.56A.66.66 0 0 0 8 5.14z"></path>'
+          : '<path d="M8 6h3v12H8zm5 0h3v12h-3z"></path>';
+        muteIcon.innerHTML = muted
+          ? '<path d="M14 5.23v13.54c0 .45-.54.67-.85.35L8.57 15H5c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3.57l4.58-4.12c.31-.32.85-.1.85.35z"></path><path d="M17.59 8.59 19 10l-2 2 2 2-1.41 1.41-2-2-2 2L12.17 14l2-2-2-2 1.42-1.41 2 2z"></path>'
+          : '<path d="M14 5.23v13.54c0 .45-.54.67-.85.35L8.57 15H5c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3.57l4.58-4.12c.31-.32.85-.1.85.35z"></path><path d="M16.5 8.5a.75.75 0 0 1 1.06 0A4.97 4.97 0 0 1 19 12c0 1.38-.56 2.63-1.46 3.54a.75.75 0 1 1-1.06-1.06A3.47 3.47 0 0 0 18 12c0-.97-.39-1.85-1.02-2.48a.75.75 0 0 1 0-1.06z"></path>';
+      }
+
+      function setMenuOpen(menuName, open) {
+        const targetButton = menuName === 'quality' ? qualityButton : bitrateButton;
+        const targetMenu = menuName === 'quality' ? qualityMenu : bitrateMenu;
+        const otherButton = menuName === 'quality' ? bitrateButton : qualityButton;
+        const otherMenu = menuName === 'quality' ? bitrateMenu : qualityMenu;
+
+        targetMenu.classList.toggle('open', open);
+        targetButton.classList.toggle('open', open);
+
+        if (open) {
+          otherMenu.classList.remove('open');
+          otherButton.classList.remove('open');
+          holdControls();
+        } else if (isLiveStream) {
+          scheduleControlsHide();
+        }
+      }
+
+      function refreshMenus() {
+        qualityButton.textContent = QUALITY_OPTIONS[qualityIndex].label;
+        bitrateButton.textContent = BITRATE_OPTIONS[bitrateIndex].label;
+        qualityButton.classList.toggle('active', qualityMenu.classList.contains('open'));
+        bitrateButton.classList.toggle('active', bitrateMenu.classList.contains('open'));
+
+        qualityMenu.innerHTML = QUALITY_OPTIONS.map((option, index) => {
+          const activeClass = index === qualityIndex ? 'menu-option active' : 'menu-option';
+          return `<button class="${activeClass}" type="button" data-quality-index="${index}">${option.label}</button>`;
+        }).join('');
+
+        bitrateMenu.innerHTML = BITRATE_OPTIONS.map((option, index) => {
+          const activeClass = index === bitrateIndex ? 'menu-option active' : 'menu-option';
+          return `<button class="${activeClass}" type="button" data-bitrate-index="${index}">${option.label}</button>`;
+        }).join('');
+      }
+
+      function closePeer() {
+        if (!peer) {
+          connectionId = null;
+          return;
+        }
+
+        peer.onicecandidate = null;
+        peer.ontrack = null;
+        peer.onconnectionstatechange = null;
+        try {
+          peer.close();
+        } catch (_) {
+        }
+        peer = null;
+        connectionId = null;
+      }
+
+      function closeSocket() {
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = null;
+        }
+        socketOpenedByServer = false;
+        if (!socket) {
+          return;
+        }
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onerror = null;
+        socket.onclose = null;
+        try {
+          socket.close();
+        } catch (_) {
+        }
+        socket = null;
+      }
+
+      function cleanupForReconnect() {
+        clearControlsHideTimer();
+        closePeer();
+        videoNode.srcObject = null;
+        isLiveStream = false;
+        setControlsVisible(false);
+      }
+
+      function scheduleReconnect(reason, delay = 1500) {
+        clearTimeout(reconnectTimer);
+        cleanupForReconnect();
+        setStatus('Reconnecting', 'connecting');
+        setOverlay('Reconnecting', reason, false);
+        reconnectTimer = setTimeout(() => {
+          connect();
+        }, delay);
+      }
+
+      function buildSignalingUrl() {
+        const query = new URLSearchParams({
+          key: PEER_KEY,
+          id: viewerId,
+          token: viewerToken,
+          version: PEER_VERSION,
+        });
+        return `wss://${PEER_HOST}:${PEER_PORT}${normalizePath(PEER_PATH)}peerjs?${query.toString()}`;
+      }
+
+      function startHeartbeat() {
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer);
+        }
+        heartbeatTimer = setInterval(() => {
+          if (!socket || socket.readyState !== WebSocket.OPEN) {
+            return;
+          }
+          socket.send(JSON.stringify({ type: 'HEARTBEAT' }));
+        }, 5000);
+      }
+
+      function buildMetadata() {
+        const quality = QUALITY_OPTIONS[qualityIndex] || QUALITY_OPTIONS[2];
+        const bitrate = BITRATE_OPTIONS[bitrateIndex] || BITRATE_OPTIONS[7];
+        return {
+          constraints: {
+            maxHeight: quality.value > 0 ? quality.value : null,
+            maxBitrateKbps: bitrate.value,
+          },
+        };
+      }
+
+      function attachStream(stream) {
+        if (!stream) {
+          return;
+        }
+
+        videoNode.srcObject = stream;
+        applyVolumeState();
+
+        if (!manualPause) {
+          videoNode.play().catch(() => {
+            manualMute = true;
+            applyVolumeState();
+            return videoNode.play().catch(() => {});
+          });
+        }
+
+        isLiveStream = true;
+        setStatus('Live', 'live');
+        setOverlay('Live', 'Connected.', true);
+        revealControls();
+      }
+
+      async function createPeerAndOffer() {
+        cleanupForReconnect();
+        connectionId = `mc_${randomId(12)}`;
+        peer = new RTCPeerConnection(RTC_CONFIG);
+        peer.addTransceiver('video', { direction: 'recvonly' });
+        peer.addTransceiver('audio', { direction: 'recvonly' });
+
+        peer.ontrack = (event) => {
+          const [stream] = event.streams;
+          attachStream(stream);
+        };
+
+        peer.onicecandidate = (event) => {
+          if (!event.candidate || !socket || socket.readyState !== WebSocket.OPEN) {
+            return;
+          }
+
+          socket.send(
+            JSON.stringify({
+              type: 'CANDIDATE',
+              dst: streamId,
+              payload: {
+                type: 'media',
+                connectionId,
+                candidate: {
+                  candidate: event.candidate.candidate,
+                  sdpMid: event.candidate.sdpMid,
+                  sdpMLineIndex: event.candidate.sdpMLineIndex,
+                },
+              },
+            }),
+          );
+        };
+
+        peer.onconnectionstatechange = () => {
+          if (!peer) {
+            return;
+          }
+
+          if (peer.connectionState === 'connected') {
+            setStatus('Live', 'live');
+            return;
+          }
+
+          if (
+            peer.connectionState === 'failed' ||
+            peer.connectionState === 'disconnected' ||
+            peer.connectionState === 'closed'
+          ) {
+            scheduleReconnect('Waiting for the phone again.');
+          }
+        };
+
+        const offer = await peer.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        });
+
+        await peer.setLocalDescription(offer);
+
+        socket.send(
+          JSON.stringify({
+            type: 'OFFER',
+            dst: streamId,
+            payload: {
+              type: 'media',
+              connectionId,
+              metadata: buildMetadata(),
+              sdp: {
+                type: offer.type,
+                sdp: offer.sdp,
+              },
+            },
+          }),
+        );
+
+        setStatus('Connecting', 'connecting');
+        setOverlay('Connecting', 'Negotiating stream…', false);
+      }
+
+      async function handleServerMessage(raw) {
+        let message;
+        try {
+          message = JSON.parse(raw);
+        } catch (_) {
+          return;
+        }
+
+        switch (message.type) {
+          case 'OPEN':
+            socketOpenedByServer = true;
+            startHeartbeat();
+            await createPeerAndOffer();
+            return;
+          case 'ANSWER': {
+            const payload = message.payload || {};
+            if (!peer || payload.connectionId !== connectionId || !payload.sdp) {
+              return;
+            }
+            await peer.setRemoteDescription(payload.sdp);
+            return;
+          }
+          case 'CANDIDATE': {
+            const payload = message.payload || {};
+            if (!peer || payload.connectionId !== connectionId || !payload.candidate) {
+              return;
+            }
+            try {
+              await peer.addIceCandidate(payload.candidate);
+            } catch (_) {
+            }
+            return;
+          }
+          case 'LEAVE':
+          case 'EXPIRE':
+            scheduleReconnect('Streamer offline.');
+            return;
+          case 'ERROR': {
+            const details = message.payload && message.payload.msg
+              ? message.payload.msg
+              : 'Signaling error.';
+            scheduleReconnect(details);
+            return;
+          }
+          case 'ID-TAKEN':
+            viewerId = `viewer_${randomId(5)}`;
+            viewerToken = randomId(12);
+            scheduleReconnect('Refreshing session…', 400);
+            return;
+          default:
+            return;
+        }
+      }
+
+      function connect() {
+        clearTimeout(reconnectTimer);
+
+        if (!streamId) {
+          cleanupForReconnect();
+          setStatus('Missing link', 'error');
+          setOverlay('Missing stream ID', 'Open the exact link shared by the app.', false);
+          return;
+        }
+
+        closeSocket();
+        cleanupForReconnect();
+        setStatus('Waiting', 'connecting');
+        setOverlay('Waiting for stream', 'Connecting…', false);
+
+        socket = new WebSocket(buildSignalingUrl());
+        socket.onopen = () => {
+          setStatus('Signal ready', 'connecting');
+          setOverlay('Waiting for stream', 'Ready to receive.', false);
+        };
+        socket.onmessage = (event) => {
+          handleServerMessage(event.data).catch(() => {
+            scheduleReconnect('Retrying…');
+          });
+        };
+        socket.onerror = () => {
+          if (!socketOpenedByServer) {
+            scheduleReconnect('Could not reach PeerServer.');
+          }
+        };
+        socket.onclose = () => {
+          if (socketOpenedByServer) {
+            scheduleReconnect('Signal closed.');
+          }
+        };
+      }
+
+      pauseButton.addEventListener('click', () => {
+        revealControls();
+        manualPause = !manualPause;
+        if (manualPause) {
+          videoNode.pause();
+        } else {
+          videoNode.play().catch(() => {});
+        }
+        refreshButtons();
+      });
+
+      muteButton.addEventListener('click', () => {
+        revealControls();
+        if (isMutedState()) {
+          manualMute = false;
+          if (currentVolume <= 0.001) {
+            currentVolume = rememberedVolume > 0 ? rememberedVolume : 0.8;
+            volumeSlider.value = Math.round(currentVolume * 100);
+          }
+        } else {
+          manualMute = true;
+          if (currentVolume > 0.001) {
+            rememberedVolume = currentVolume;
+          }
+        }
+        applyVolumeState();
+      });
+
+      volumeSlider.addEventListener('input', () => {
+        revealControls();
+        currentVolume = Number(volumeSlider.value) / 100;
+        if (currentVolume > 0.001) {
+          rememberedVolume = currentVolume;
+          manualMute = false;
+        }
+        applyVolumeState();
+      });
+
+      qualityButton.addEventListener('click', () => {
+        const shouldOpen = !qualityMenu.classList.contains('open');
+        setMenuOpen('quality', shouldOpen);
+        refreshMenus();
+      });
+
+      bitrateButton.addEventListener('click', () => {
+        const shouldOpen = !bitrateMenu.classList.contains('open');
+        setMenuOpen('bitrate', shouldOpen);
+        refreshMenus();
+      });
+
+      qualityMenu.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-quality-index]');
+        if (!button) {
+          return;
+        }
+
+        qualityIndex = Number(button.dataset.qualityIndex);
+        setMenuOpen('quality', false);
+        refreshMenus();
+
+        if (!socketOpenedByServer) {
+          return;
+        }
+
+        createPeerAndOffer().catch(() => {
+          scheduleReconnect('Could not apply quality.');
+        });
+      });
+
+      bitrateMenu.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-bitrate-index]');
+        if (!button) {
+          return;
+        }
+
+        bitrateIndex = Number(button.dataset.bitrateIndex);
+        setMenuOpen('bitrate', false);
+        refreshMenus();
+
+        if (!socketOpenedByServer) {
+          return;
+        }
+
+        createPeerAndOffer().catch(() => {
+          scheduleReconnect('Could not apply bitrate.');
+        });
+      });
+
+      document.addEventListener('click', (event) => {
+        if (!event.target.closest('.menu-anchor')) {
+          setMenuOpen('quality', false);
+          setMenuOpen('bitrate', false);
+          refreshMenus();
+        }
+      });
+
+      viewer.addEventListener('pointermove', () => {
+        revealControls();
+      }, { passive: true });
+
+      viewer.addEventListener('pointerdown', () => {
+        revealControls();
+      }, { passive: true });
+
+      viewer.addEventListener('touchstart', () => {
+        revealControls();
+      }, { passive: true });
+
+      videoNode.addEventListener('playing', () => {
+        if (!manualPause) {
+          isLiveStream = true;
+          setStatus('Live', 'live');
+          setOverlay('Live', 'Connected.', true);
+          revealControls();
+        }
+      });
+
+      videoNode.addEventListener('waiting', () => {
+        if (isLiveStream && !manualPause) {
+          setStatus('Buffering', 'connecting');
+          revealControls();
+        }
+      });
+
+      videoNode.addEventListener('stalled', () => {
+        if (isLiveStream && !manualPause) {
+          setStatus('Buffering', 'connecting');
+          revealControls();
+        }
+      });
+
+      refreshButtons();
+      refreshMenus();
+      applyVolumeState();
+      connect();
+    </script>
+  </body>
+</html>
