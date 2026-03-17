@@ -566,12 +566,16 @@
         const parts = cleanPath.split('/').filter(Boolean);
         if (parts.length > 0) {
           const tail = decodeURIComponent(parts[parts.length - 1]);
-          if (tail && tail.toLowerCase() !== 'index.html') {
+          if (tail && tail.toLowerCase() !== 'index.html' && isPathStreamId(tail)) {
             return tail;
           }
         }
 
         return '';
+      }
+
+      function isPathStreamId(value) {
+        return /^camera_[a-z0-9]+$/i.test(value);
       }
 
       function randomId(length) {
