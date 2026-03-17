@@ -575,7 +575,8 @@
       }
 
       function isPathStreamId(value) {
-        return /^camera_[a-z0-9]+$/i.test(value);
+        return /^camera_[a-z0-9]+$/i.test(value) ||
+          (/^[a-z][a-z0-9]{4}$/i.test(value) && /\d/.test(value));
       }
 
       function randomId(length) {
