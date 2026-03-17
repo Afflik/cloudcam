@@ -481,11 +481,10 @@
     </div>
 
     <script>
-      const PEER_HOST = '0.peerjs.com';
-      const PEER_PORT = 443;
-      const PEER_PATH = '/';
-      const PEER_KEY = 'peerjs';
-      const PEER_VERSION = '1.5.5';
+      const DEFAULT_SIGNAL_PATH = '/signal/';
+      const SIGNAL_PATH_SEGMENT = 'peerjs';
+      const SIGNAL_QUERY_PARAMETER = 's';
+      const SIGNAL_PROTOCOL_VERSION = '1.5.5';
       const RTC_CONFIG = {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -532,6 +531,7 @@
       const bitrateMenu = document.getElementById('bitrateMenu');
 
       const streamId = resolveStreamId();
+      const signalBaseUrl = resolveSignalBaseUrl();
 
       let socket = null;
       let peer = null;
@@ -574,9 +574,33 @@
         return '';
       }
 
+      function resolveSignalBaseUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const encodedSignalBase = params.get(SIGNAL_QUERY_PARAMETER);
+        if (encodedSignalBase && encodedSignalBase.trim()) {
+          const decodedSignalBase = decodeBase64Url(encodedSignalBase.trim());
+          const normalizedSignalBase = tryNormalizeSignalBaseUrl(decodedSignalBase);
+          if (normalizedSignalBase) {
+            return normalizedSignalBase;
+          }
+        }
+
+        return new URL(DEFAULT_SIGNAL_PATH, window.location.origin).toString();
+      }
+
       function isPathStreamId(value) {
         return /^camera_[a-z0-9]+$/i.test(value) ||
           (/^[a-z][a-z0-9]{4}$/i.test(value) && /\d/.test(value));
+      }
+
+      function decodeBase64Url(value) {
+        const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+        const padding = (4 - (normalized.length % 4)) % 4;
+        try {
+          return atob(`${normalized}${'='.repeat(padding)}`);
+        } catch (_) {
+          return '';
+        }
       }
 
       function randomId(length) {
@@ -593,6 +617,21 @@
           return '/';
         }
         return `${path.startsWith('/') ? path : `/${path}`}${path.endsWith('/') ? '' : '/'}`;
+      }
+
+      function tryNormalizeSignalBaseUrl(value) {
+        try {
+          const url = new URL(value);
+          if (!['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)) {
+            return null;
+          }
+          url.search = '';
+          url.hash = '';
+          url.pathname = normalizePath(url.pathname);
+          return url.toString();
+        } catch (_) {
+          return null;
+        }
       }
 
       function isMutedState() {
@@ -770,13 +809,20 @@
       }
 
       function buildSignalingUrl() {
-        const query = new URLSearchParams({
-          key: PEER_KEY,
+        const url = new URL(SIGNAL_PATH_SEGMENT, signalBaseUrl);
+        if (url.protocol === 'https:') {
+          url.protocol = 'wss:';
+        } else if (url.protocol === 'http:') {
+          url.protocol = 'ws:';
+        }
+
+        url.search = new URLSearchParams({
+          key: 'localcamera',
           id: viewerId,
           token: viewerToken,
-          version: PEER_VERSION,
-        });
-        return `wss://${PEER_HOST}:${PEER_PORT}${normalizePath(PEER_PATH)}peerjs?${query.toString()}`;
+          version: SIGNAL_PROTOCOL_VERSION,
+        }).toString();
+        return url.toString();
       }
 
       function startHeartbeat() {
@@ -985,7 +1031,7 @@
         };
         socket.onerror = () => {
           if (!socketOpenedByServer) {
-            scheduleReconnect('Could not reach PeerServer.');
+            scheduleReconnect('Could not reach cloud signaling.');
           }
         };
         socket.onclose = () => {
