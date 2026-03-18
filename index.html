@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>LocalCamera Cloud Viewer</title>
+    <title>CloudCam Viewer</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -481,24 +481,12 @@
     </div>
 
     <script>
-      const DEFAULT_SIGNAL_BASE_URL = 'https://localcamera-cloud-signal.affliction134.workers.dev/';
-      const SIGNAL_PATH_SEGMENT = 'peerjs';
+      const DEFAULT_SIGNAL_BASE_URL = 'https://cam.affliction134.workers.dev/';
+      const SIGNAL_PATH_SEGMENT = 'cam';
       const SIGNAL_QUERY_PARAMETER = 's';
-      const SIGNAL_PROTOCOL_VERSION = '1.5.5';
-      const RTC_CONFIG = {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          {
-            urls: [
-              'turn:eu-0.turn.peerjs.com:3478',
-              'turn:us-0.turn.peerjs.com:3478',
-            ],
-            username: 'peerjs',
-            credential: 'peerjsp',
-          },
-        ],
-        sdpSemantics: 'unified-plan',
-      };
+      const DEFAULT_ICE_SERVERS = [
+        { urls: 'stun:stun.l.google.com:19302' },
+      ];
 
       const QUALITY_OPTIONS = [
         { label: 'Source', value: 0 },
@@ -512,6 +500,9 @@
         const value = (index + 1) * 1000;
         return { label: `${value} kbps`, value };
       }).reverse();
+
+      let qualityOptions = QUALITY_OPTIONS.slice();
+      let bitrateOptions = BITRATE_OPTIONS.slice();
 
       const viewer = document.getElementById('viewer');
       const statusPill = document.getElementById('statusPill');
@@ -539,7 +530,7 @@
       let reconnectTimer = null;
       let controlsHideTimer = null;
       let viewerId = `viewer_${randomId(5)}`;
-      let viewerToken = randomId(12);
+      let rtcConfig = buildRtcConfig();
       let connectionId = null;
       let manualPause = false;
       let manualMute = false;
@@ -549,6 +540,9 @@
       let bitrateIndex = 7;
       let currentVolume = 1;
       let rememberedVolume = 1;
+      let reconnectAttempt = 0;
+      let userSelectedQuality = false;
+      let userSelectedBitrate = false;
 
       function resolveStreamId() {
         const params = new URLSearchParams(window.location.search);
@@ -612,6 +606,64 @@
         return result;
       }
 
+      function normalizeIceServerUrls(value) {
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          return trimmed ? [trimmed] : [];
+        }
+
+        if (!Array.isArray(value)) {
+          return [];
+        }
+
+        return value
+          .map((entry) => typeof entry === 'string' ? entry.trim() : '')
+          .filter((entry) => entry);
+      }
+
+      function normalizeIceServer(server) {
+        if (!server || typeof server !== 'object') {
+          return null;
+        }
+
+        const urls = normalizeIceServerUrls(server.urls);
+        if (urls.length === 0) {
+          return null;
+        }
+
+        const normalized = {
+          urls: urls.length === 1 ? urls[0] : urls,
+        };
+
+        if (typeof server.username === 'string' && server.username.trim()) {
+          normalized.username = server.username.trim();
+        }
+
+        if (typeof server.credential === 'string' && server.credential.trim()) {
+          normalized.credential = server.credential.trim();
+        }
+
+        return normalized;
+      }
+
+      function normalizeIceServers(value) {
+        const source = Array.isArray(value) ? value : DEFAULT_ICE_SERVERS;
+        const normalized = source
+          .map((server) => normalizeIceServer(server))
+          .filter((server) => server);
+        if (normalized.length > 0) {
+          return normalized;
+        }
+        return DEFAULT_ICE_SERVERS.map((server) => ({ ...server }));
+      }
+
+      function buildRtcConfig(iceServers = DEFAULT_ICE_SERVERS) {
+        return {
+          iceServers: normalizeIceServers(iceServers),
+          sdpSemantics: 'unified-plan',
+        };
+      }
+
       function normalizePath(path) {
         if (!path || path === '/') {
           return '/';
@@ -640,6 +692,104 @@
 
       function isAnyMenuOpen() {
         return qualityMenu.classList.contains('open') || bitrateMenu.classList.contains('open');
+      }
+
+      function resolveOptionIndex(options, preferredValue, fallbackIndex = 0) {
+        if (!Array.isArray(options) || options.length === 0) {
+          return 0;
+        }
+
+        const numericValue = Number(preferredValue);
+        if (Number.isFinite(numericValue)) {
+          const exactIndex = options.findIndex((option) => option.value === numericValue);
+          if (exactIndex >= 0) {
+            return exactIndex;
+          }
+
+          let bestIndex = 0;
+          let bestDistance = Number.POSITIVE_INFINITY;
+          options.forEach((option, index) => {
+            const distance = Math.abs(Number(option.value) - numericValue);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestIndex = index;
+            }
+          });
+          return bestIndex;
+        }
+
+        return Math.max(0, Math.min(fallbackIndex, options.length - 1));
+      }
+
+      function buildQualityOptionsFromInfo(streamInfo) {
+        const heights = [];
+        const presets = Array.isArray(streamInfo && streamInfo.availablePresets)
+          ? streamInfo.availablePresets
+          : [];
+
+        presets.forEach((preset) => {
+          const height = Number(preset && preset.height);
+          if (Number.isFinite(height) && height > 0) {
+            heights.push(height);
+          }
+        });
+
+        const activeHeight = Number(streamInfo && streamInfo.preset && streamInfo.preset.height);
+        if (Number.isFinite(activeHeight) && activeHeight > 0) {
+          heights.push(activeHeight);
+        }
+
+        const uniqueHeights = Array.from(new Set(heights)).sort((left, right) => right - left);
+        if (uniqueHeights.length === 0) {
+          return QUALITY_OPTIONS.slice();
+        }
+
+        return [
+          { label: 'Source', value: 0 },
+          ...uniqueHeights.map((height) => ({ label: `${height}p`, value: height })),
+        ];
+      }
+
+      function buildBitrateOptionsFromInfo(streamInfo) {
+        const options = BITRATE_OPTIONS.slice();
+        const activeBitrate = Number(streamInfo && streamInfo.bitrateKbps);
+        if (Number.isFinite(activeBitrate) && activeBitrate > 0 && !options.some((option) => option.value === activeBitrate)) {
+          options.push({ label: `${activeBitrate} kbps`, value: activeBitrate });
+          options.sort((left, right) => right.value - left.value);
+        }
+        return options;
+      }
+
+      function applyRemoteStreamInfo(streamInfo) {
+        if (!streamInfo || typeof streamInfo !== 'object') {
+          return;
+        }
+
+        const previousQualityValue = qualityOptions[qualityIndex] ? qualityOptions[qualityIndex].value : 720;
+        const previousBitrateValue = bitrateOptions[bitrateIndex] ? bitrateOptions[bitrateIndex].value : 3000;
+        const remoteHeight = Number(streamInfo.preset && streamInfo.preset.height);
+        const remoteBitrate = Number(streamInfo.bitrateKbps);
+
+        qualityOptions = buildQualityOptionsFromInfo(streamInfo);
+        bitrateOptions = buildBitrateOptionsFromInfo(streamInfo);
+
+        qualityIndex = userSelectedQuality
+          ? resolveOptionIndex(
+              qualityOptions,
+              previousQualityValue,
+              resolveOptionIndex(qualityOptions, remoteHeight, 0),
+            )
+          : resolveOptionIndex(qualityOptions, remoteHeight, 0);
+
+        bitrateIndex = userSelectedBitrate
+          ? resolveOptionIndex(
+              bitrateOptions,
+              previousBitrateValue,
+              resolveOptionIndex(bitrateOptions, remoteBitrate, 7),
+            )
+          : resolveOptionIndex(bitrateOptions, remoteBitrate, 7);
+
+        refreshMenus();
       }
 
       function setStatus(text, tone) {
@@ -737,17 +887,20 @@
       }
 
       function refreshMenus() {
-        qualityButton.textContent = QUALITY_OPTIONS[qualityIndex].label;
-        bitrateButton.textContent = BITRATE_OPTIONS[bitrateIndex].label;
+        qualityIndex = Math.max(0, Math.min(qualityIndex, qualityOptions.length - 1));
+        bitrateIndex = Math.max(0, Math.min(bitrateIndex, bitrateOptions.length - 1));
+
+        qualityButton.textContent = (qualityOptions[qualityIndex] || qualityOptions[0]).label;
+        bitrateButton.textContent = (bitrateOptions[bitrateIndex] || bitrateOptions[0]).label;
         qualityButton.classList.toggle('active', qualityMenu.classList.contains('open'));
         bitrateButton.classList.toggle('active', bitrateMenu.classList.contains('open'));
 
-        qualityMenu.innerHTML = QUALITY_OPTIONS.map((option, index) => {
+        qualityMenu.innerHTML = qualityOptions.map((option, index) => {
           const activeClass = index === qualityIndex ? 'menu-option active' : 'menu-option';
           return `<button class="${activeClass}" type="button" data-quality-index="${index}">${option.label}</button>`;
         }).join('');
 
-        bitrateMenu.innerHTML = BITRATE_OPTIONS.map((option, index) => {
+        bitrateMenu.innerHTML = bitrateOptions.map((option, index) => {
           const activeClass = index === bitrateIndex ? 'menu-option active' : 'menu-option';
           return `<button class="${activeClass}" type="button" data-bitrate-index="${index}">${option.label}</button>`;
         }).join('');
@@ -798,14 +951,18 @@
         setControlsVisible(false);
       }
 
-      function scheduleReconnect(reason, delay = 1500) {
+      function scheduleReconnect(reason, delay = null) {
         clearTimeout(reconnectTimer);
         cleanupForReconnect();
         setStatus('Reconnecting', 'connecting');
         setOverlay('Reconnecting', reason, false);
+        reconnectAttempt += 1;
+        const reconnectDelay = delay == null
+          ? Math.min(8000, 1200 + ((reconnectAttempt - 1) * 700))
+          : delay;
         reconnectTimer = setTimeout(() => {
           connect();
-        }, delay);
+        }, reconnectDelay);
       }
 
       function buildSignalingUrl() {
@@ -817,10 +974,7 @@
         }
 
         url.search = new URLSearchParams({
-          key: 'localcamera',
           id: viewerId,
-          token: viewerToken,
-          version: SIGNAL_PROTOCOL_VERSION,
         }).toString();
         return url.toString();
       }
@@ -838,8 +992,8 @@
       }
 
       function buildMetadata() {
-        const quality = QUALITY_OPTIONS[qualityIndex] || QUALITY_OPTIONS[2];
-        const bitrate = BITRATE_OPTIONS[bitrateIndex] || BITRATE_OPTIONS[7];
+        const quality = qualityOptions[qualityIndex] || qualityOptions[0] || QUALITY_OPTIONS[2];
+        const bitrate = bitrateOptions[bitrateIndex] || bitrateOptions[0] || BITRATE_OPTIONS[7];
         return {
           constraints: {
             maxHeight: quality.value > 0 ? quality.value : null,
@@ -865,6 +1019,7 @@
         }
 
         isLiveStream = true;
+        reconnectAttempt = 0;
         setStatus('Live', 'live');
         setOverlay('Live', 'Connected.', true);
         revealControls();
@@ -873,7 +1028,7 @@
       async function createPeerAndOffer() {
         cleanupForReconnect();
         connectionId = `mc_${randomId(12)}`;
-        peer = new RTCPeerConnection(RTC_CONFIG);
+        peer = new RTCPeerConnection(rtcConfig);
         peer.addTransceiver('video', { direction: 'recvonly' });
         peer.addTransceiver('audio', { direction: 'recvonly' });
 
@@ -910,6 +1065,7 @@
           }
 
           if (peer.connectionState === 'connected') {
+            reconnectAttempt = 0;
             setStatus('Live', 'live');
             return;
           }
@@ -959,8 +1115,9 @@
         }
 
         switch (message.type) {
-          case 'OPEN':
+          case 'READY':
             socketOpenedByServer = true;
+            rtcConfig = buildRtcConfig(message.payload && message.payload.iceServers);
             startHeartbeat();
             await createPeerAndOffer();
             return;
@@ -983,8 +1140,16 @@
             }
             return;
           }
-          case 'LEAVE':
-          case 'EXPIRE':
+          case 'INFO': {
+            const payload = message.payload || {};
+            if (payload.connectionId && connectionId && payload.connectionId !== connectionId) {
+              return;
+            }
+            applyRemoteStreamInfo(payload.stream);
+            return;
+          }
+          case 'PEER_LEFT':
+          case 'UNAVAILABLE':
             scheduleReconnect('Streamer offline.');
             return;
           case 'ERROR': {
@@ -994,9 +1159,8 @@
             scheduleReconnect(details);
             return;
           }
-          case 'ID-TAKEN':
+          case 'ID_CONFLICT':
             viewerId = `viewer_${randomId(5)}`;
-            viewerToken = randomId(12);
             scheduleReconnect('Refreshing session…', 400);
             return;
           default:
@@ -1016,11 +1180,13 @@
 
         closeSocket();
         cleanupForReconnect();
+        rtcConfig = buildRtcConfig();
         setStatus('Waiting', 'connecting');
         setOverlay('Waiting for stream', 'Connecting…', false);
 
         socket = new WebSocket(buildSignalingUrl());
         socket.onopen = () => {
+          reconnectAttempt = 0;
           setStatus('Signal ready', 'connecting');
           setOverlay('Waiting for stream', 'Ready to receive.', false);
         };
@@ -1097,6 +1263,7 @@
           return;
         }
 
+        userSelectedQuality = true;
         qualityIndex = Number(button.dataset.qualityIndex);
         setMenuOpen('quality', false);
         refreshMenus();
@@ -1116,6 +1283,7 @@
           return;
         }
 
+        userSelectedBitrate = true;
         bitrateIndex = Number(button.dataset.bitrateIndex);
         setMenuOpen('bitrate', false);
         refreshMenus();
