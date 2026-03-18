@@ -534,6 +534,7 @@
       let connectionId = null;
       let manualPause = false;
       let manualMute = false;
+      let autoplayMuted = false;
       let socketOpenedByServer = false;
       let isLiveStream = false;
       let qualityIndex = 2;
@@ -687,7 +688,7 @@
       }
 
       function isMutedState() {
-        return manualMute || currentVolume <= 0.001;
+        return manualMute || autoplayMuted || currentVolume <= 0.001;
       }
 
       function isAnyMenuOpen() {
@@ -854,6 +855,23 @@
         refreshButtons();
       }
 
+      async function unlockAutoplayAudio() {
+        if (!autoplayMuted || manualPause) {
+          return;
+        }
+        autoplayMuted = false;
+        applyVolumeState();
+        try {
+          await videoNode.play();
+          if (isLiveStream) {
+            setOverlay('Live', 'Connected.', true);
+          }
+        } catch (_) {
+          autoplayMuted = true;
+          applyVolumeState();
+        }
+      }
+
       function refreshButtons() {
         const muted = isMutedState();
         pauseButton.classList.toggle('active', manualPause);
@@ -1008,12 +1026,18 @@
         }
 
         videoNode.srcObject = stream;
+        autoplayMuted = false;
         applyVolumeState();
 
         if (!manualPause) {
           videoNode.play().catch(() => {
-            manualMute = true;
+            autoplayMuted = true;
             applyVolumeState();
+            setOverlay(
+              'Tap for sound',
+              'Your browser blocked audio autoplay. Tap anywhere on the video to unmute while the stream stays live.',
+              false,
+            );
             return videoNode.play().catch(() => {});
           });
         }
@@ -1222,6 +1246,7 @@
         revealControls();
         if (isMutedState()) {
           manualMute = false;
+          autoplayMuted = false;
           if (currentVolume <= 0.001) {
             currentVolume = rememberedVolume > 0 ? rememberedVolume : 0.8;
             volumeSlider.value = Math.round(currentVolume * 100);
@@ -1241,6 +1266,7 @@
         if (currentVolume > 0.001) {
           rememberedVolume = currentVolume;
           manualMute = false;
+          autoplayMuted = false;
         }
         applyVolumeState();
       });
@@ -1311,11 +1337,33 @@
 
       viewer.addEventListener('pointerdown', () => {
         revealControls();
+        unlockAutoplayAudio().catch(() => {});
       }, { passive: true });
 
       viewer.addEventListener('touchstart', () => {
         revealControls();
+        unlockAutoplayAudio().catch(() => {});
       }, { passive: true });
+
+      window.addEventListener('pagehide', () => {
+        clearTimeout(reconnectTimer);
+        closeSocket();
+        cleanupForReconnect();
+      });
+
+      window.addEventListener('beforeunload', () => {
+        clearTimeout(reconnectTimer);
+        closeSocket();
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          return;
+        }
+        if (!socket && !reconnectTimer) {
+          connect();
+        }
+      });
 
       videoNode.addEventListener('playing', () => {
         if (!manualPause) {
