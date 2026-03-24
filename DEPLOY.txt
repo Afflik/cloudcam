@@ -1,0 +1,21 @@
+GitHub (репозиторий Afflik/cloudcam)
+------------------------------------
+  git add -A && git commit -m "..." && git push origin main
+
+  В репозитории только нужное:
+  - index.html + viewer-core.js + .nojekyll — сайт на GitHub Pages
+  - 404.html — копия index.html (нужна для открытия путей вида /xxxxx на Pages)
+  - surge/index.html, surge/200.html — только для Surge (runtime с jsDelivr)
+
+Surge (ccm.surge.sh)
+--------------------
+  cd cloudcam
+  npx surge ./surge ccm.surge.sh
+
+  Либо из проекта LocalCamera: папка cloud/ должна совпадать с cloudcam/surge/
+
+После правок viewer-core.js
+---------------------------
+  1) push в main
+  2) в surge/*.html заменить в URL коммит @8174e8b на новый короткий SHA того коммита, где обновлён viewer-core.js
+  3) commit + push + снова npx surge ./surge ccm.surge.sh
