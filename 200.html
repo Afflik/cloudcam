@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CloudCam</title>
+  <title>LocalCamera NET Viewer</title>
   <meta name="description" content="Realtime camera streaming viewer">
   <meta name="version" content="2026032418">
   
@@ -23,16 +23,6 @@
           registration.unregister();
         }
       });
-    }
-
-    if ('caches' in window) {
-      caches.keys()
-        .then(function(cacheNames) {
-          return Promise.all(cacheNames.map(function(cacheName) {
-            return caches.delete(cacheName);
-          }));
-        })
-        .catch(function() {});
     }
     
     // Force a network-fresh load on every entry while keeping a clean URL.
@@ -100,8 +90,8 @@
       transition: filter 0.18s ease;
     }
 
-    .viewer.state-blurred #video,
-    .viewer.autoplay-gate #video {
+    .viewer.autoplay-gate #video,
+    .viewer.state-blurred #video {
       filter: blur(8px) brightness(0.62);
     }
 
