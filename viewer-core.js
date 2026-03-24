@@ -1,4 +1,4 @@
-﻿const { createClient } = window.supabase;
+const { createClient } = window.supabase;
 
     // Configuration
     const VIEWER_CONFIG_QUERY_PARAMETER = 'c';
@@ -442,8 +442,7 @@
             console.log('[Viewer] remote track unmuted', event.track.kind);
             schedulePlaybackKick(`track-unmute-${event.track.kind}`);
           };
-          event.track.onended = () =
-> console.log('[Viewer] remote track ended', event.track.kind);
+          event.track.onended = () => console.log('[Viewer] remote track ended', event.track.kind);
           handleIncomingTrack(event.track, event.streams || []);
         };
 
@@ -1167,8 +1166,7 @@
       // Filter out duplicates and options higher than stream
       const filteredQualities = qualities.filter((q, index, arr) => 
         arr.findIndex(x => x.value === q.value) === index && 
-        (q.value === 'auto' || q.height <= 
-streamInfo.height)
+        (q.value === 'auto' || q.height <= streamInfo.height)
       );
 
       qualityOptions.innerHTML = '';
@@ -1407,8 +1405,7 @@ streamInfo.height)
 
     function handleVolumeChange(event) {
       currentVolume = Number(event.target.value) / 100;
-      a
-udio.volume = currentVolume;
+      audio.volume = currentVolume;
       
       // Unmute if volume is set above 0
       if (currentVolume > 0) {
